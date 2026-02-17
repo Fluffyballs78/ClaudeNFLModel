@@ -92,7 +92,12 @@ def main():
     week_edges = engine.find_edges(current_season, sample_week)
     if len(week_edges) > 0:
         for _, edge in week_edges.iterrows():
-            result_str = "W" if edge['ats_won'] else "L"
+            if edge['ats_won'] is None:
+                result_str = "P"
+            elif edge['ats_won']:
+                result_str = "W"
+            else:
+                result_str = "L"
             print(f"  {edge['away_team']} @ {edge['home_team']}")
             print(f"    Model: {edge['model_spread']:+.1f}  Market: {edge['market_spread']:+.1f}  Edge: {edge['edge']:.1f} pts")
             print(f"    Bet: {edge['bet_side']}  Result: {result_str}")

@@ -281,7 +281,8 @@ class NFLPowerRatingEngine:
         Predict the spread for a specific matchup.
         
         Returns:
-            float: Predicted spread (negative = home favored), rounded to 0.5
+            float: Predicted spread (positive = home favored), matching nflfastR convention.
+                   Rounded to nearest 0.5.
         """
         if season not in self.power_ratings or through_week not in self.power_ratings[season]:
             self.compute_ratings(season, through_week)
@@ -291,14 +292,21 @@ class NFLPowerRatingEngine:
         if home_team not in ratings or away_team not in ratings:
             return None
         
-        predicted_margin = ratings[home_team] - ratings[away_team] + self.config['home_field_advantage']
-        predicted_spread = -predicted_margin
+        # Positive = home favored (matches nflfastR spread_line convention)
+        predicted_spread = ratings[home_team] - ratings[away_team] + self.config['home_field_advantage']
         
         return round(predicted_spread * 2) / 2
     
     def find_edges(self, season, week):
         """
         Compare model predictions to market spreads for a given week.
+        
+        Spread convention (matching nflfastR): positive = home favored.
+        Result convention (matching nflfastR): positive = home won by X.
+        
+        ATS cover logic:
+            Home covers if: result > spread (home won by more than spread)
+            Away covers if: result < spread (home won by less than spread, or lost)
         
         Returns:
             DataFrame with columns: game_id, home_team, away_team, model_spread,
@@ -318,16 +326,31 @@ class NFLPowerRatingEngine:
             if predicted is None or pd.isna(market):
                 continue
             
+            # Edge: difference between model and market
+            # Both use same convention: positive = home favored
             edge = predicted - market
             
+            # If edge > 0: model thinks home is stronger than market does → bet home
+            # If edge < 0: model thinks away is stronger than market does → bet away
             if abs(edge) >= self.config['min_edge_threshold']:
-                bet_side = game['away_team'] if edge > 0 else game['home_team']
-                ats_result = game['result'] + market
+                if edge > 0:
+                    bet_side = game['home_team']
+                else:
+                    bet_side = game['away_team']
+                
+                # ATS result: did the bet win?
+                # Home covers when: result > spread (won by more than expected)
+                # Away covers when: result < spread (home didn't cover)
+                home_covered = game['result'] > market
                 
                 if edge > 0:
-                    won = ats_result < 0
+                    won = home_covered       # we bet home
                 else:
-                    won = ats_result > 0
+                    won = not home_covered   # we bet away
+                
+                # Handle pushes (result == spread)
+                if game['result'] == market:
+                    won = None  # push
                 
                 edges.append({
                     'game_id': game['game_id'],
@@ -400,10 +423,14 @@ class NFLPowerRatingEngine:
             print("No edges found in backtest.")
             return
         
-        total = len(results)
-        wins = results['ats_won'].sum()
+        # Filter out pushes
+        decided = results[results['ats_won'].notna()].copy()
+        pushes = len(results) - len(decided)
+        
+        total = len(decided)
+        wins = decided['ats_won'].sum()
         losses = total - wins
-        win_pct = wins / total * 100
+        win_pct = wins / total * 100 if total > 0 else 0
         breakeven = 52.38
         
         # ROI at -110 juice
@@ -413,12 +440,12 @@ class NFLPowerRatingEngine:
         print(f"\n{'='*55}")
         print(f"  BACKTEST RESULTS")
         print(f"{'='*55}")
-        print(f"  Total bets:        {total}")
+        print(f"  Total bets:        {total} ({pushes} pushes excluded)")
         print(f"  Record:            {int(wins)}-{int(losses)}")
         print(f"  Win %:             {win_pct:.1f}%")
         print(f"  Breakeven:         {breakeven:.1f}%")
         print(f"  Estimated ROI:     {roi:+.1f}%")
-        print(f"  Avg edge:          {results['edge'].mean():.1f} pts")
+        print(f"  Avg edge:          {decided['edge'].mean():.1f} pts")
         print(f"  Min edge filter:   {self.config['min_edge_threshold']} pts")
         
         print(f"\n  Performance by Edge Size:")
@@ -426,7 +453,7 @@ class NFLPowerRatingEngine:
         print(f"  {'-'*40}")
         
         for low, high, label in [(2, 3, "2-3 pts"), (3, 5, "3-5 pts"), (5, 99, "5+ pts")]:
-            subset = results[(results['edge'] >= low) & (results['edge'] < high)]
+            subset = decided[(decided['edge'] >= low) & (decided['edge'] < high)]
             if len(subset) > 0:
                 sw = subset['ats_won'].sum()
                 sl = len(subset) - sw
