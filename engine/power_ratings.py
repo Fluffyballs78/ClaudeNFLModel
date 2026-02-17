@@ -367,17 +367,22 @@ class NFLPowerRatingEngine:
         
         return pd.DataFrame(edges)
     
-    def backtest(self, season):
+    def backtest(self, season, max_week=18):
         """
         Run a full-season backtest and return all flagged edges with ATS results.
+        
+        Args:
+            season: NFL season year
+            max_week: Last week to include (default 18 = regular season only)
         
         Returns:
             DataFrame with all bets and outcomes for the season
         """
         all_edges = []
-        max_week = self.games_df[self.games_df['season'] == season]['week'].max()
+        data_max_week = self.games_df[self.games_df['season'] == season]['week'].max()
+        end_week = min(max_week, data_max_week)
         
-        for week in range(2, max_week + 1):
+        for week in range(2, end_week + 1):
             week_edges = self.find_edges(season, week)
             if len(week_edges) > 0:
                 all_edges.append(week_edges)

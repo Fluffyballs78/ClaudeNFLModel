@@ -49,9 +49,12 @@ def main():
     # Step 3: Show current ratings for most recent season
     # -----------------------------------------------------------------
     current_season = seasons[-1]
-    max_week = games[games['season'] == current_season]['week'].max()
+    max_week_all = games[games['season'] == current_season]['week'].max()
+    # Cap at week 18 (regular season) — playoff games distort ratings
+    # because only some teams play them
+    max_week = min(18, max_week_all)
     
-    print(f"\n[3] Computing {current_season} ratings...")
+    print(f"\n[3] Computing {current_season} ratings (regular season, through Week {max_week})...")
     engine.print_ratings(current_season, max_week)
     
     # -----------------------------------------------------------------

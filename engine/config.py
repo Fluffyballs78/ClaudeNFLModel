@@ -62,7 +62,7 @@ CONFIG = {
     # -------------------------------------------------------------------------
     # Minimum difference (in points) between model spread and market spread
     # to flag as a betting opportunity. Higher = fewer but stronger signals.
-    "min_edge_threshold": 2.0,
+    "min_edge_threshold": 5.0,
 
     # -------------------------------------------------------------------------
     # SEASONS
