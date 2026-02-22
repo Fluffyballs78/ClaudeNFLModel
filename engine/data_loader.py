@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 
 
-def load_real_data(seasons=[2022, 2023, 2024]):
+def load_real_data(seasons=[2022, 2023, 2024], return_pbp=False):
     """
     Load real NFL play-by-play data and aggregate to game-level EPA summaries.
     
@@ -19,9 +19,12 @@ def load_real_data(seasons=[2022, 2023, 2024]):
     
     Args:
         seasons: List of NFL seasons to load
+        return_pbp: If True, also return the raw play-by-play DataFrame
+                   (needed for QB adjustment module)
     
     Returns:
         DataFrame with one row per game and EPA metrics
+        If return_pbp=True, returns (games_df, pbp_df)
     """
     import nfl_data_py as nfl
     
@@ -33,6 +36,8 @@ def load_real_data(seasons=[2022, 2023, 2024]):
     games = compute_game_epa_from_pbp(pbp)
     print(f"Aggregated to {len(games)} games")
     
+    if return_pbp:
+        return games, pbp
     return games
 
 

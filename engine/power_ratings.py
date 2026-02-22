@@ -276,9 +276,16 @@ class NFLPowerRatingEngine:
         self.power_ratings[season][through_week] = team_powers
         return team_powers
     
-    def predict_spread(self, home_team, away_team, season, through_week):
+    def predict_spread(self, home_team, away_team, season, through_week, qb_adjuster=None):
         """
         Predict the spread for a specific matchup.
+        
+        Args:
+            home_team: Home team abbreviation
+            away_team: Away team abbreviation
+            season: NFL season
+            through_week: Ratings computed through this week
+            qb_adjuster: Optional QBAdjuster instance for QB-based adjustments
         
         Returns:
             float: Predicted spread (positive = home favored), matching nflfastR convention.
@@ -292,12 +299,31 @@ class NFLPowerRatingEngine:
         if home_team not in ratings or away_team not in ratings:
             return None
         
+        home_rating = ratings[home_team]
+        away_rating = ratings[away_team]
+        
+        # Apply QB adjustments if available
+        if qb_adjuster is not None:
+            home_qb = qb_adjuster.get_team_qb_adjustment(home_team, season, through_week)
+            away_qb = qb_adjuster.get_team_qb_adjustment(away_team, season, through_week)
+            
+            # Convert EPA/play adjustment to points (approx 65 plays per game)
+            # Only apply the offensive weight portion since this is an offensive adjustment
+            plays_per_game = 65
+            off_weight = self.config['weight_off_epa']
+            
+            home_qb_pts = home_qb['adjustment'] * plays_per_game * off_weight
+            away_qb_pts = away_qb['adjustment'] * plays_per_game * off_weight
+            
+            home_rating += home_qb_pts
+            away_rating += away_qb_pts
+        
         # Positive = home favored (matches nflfastR spread_line convention)
-        predicted_spread = ratings[home_team] - ratings[away_team] + self.config['home_field_advantage']
+        predicted_spread = home_rating - away_rating + self.config['home_field_advantage']
         
         return round(predicted_spread * 2) / 2
     
-    def find_edges(self, season, week):
+    def find_edges(self, season, week, qb_adjuster=None):
         """
         Compare model predictions to market spreads for a given week.
         
@@ -308,6 +334,9 @@ class NFLPowerRatingEngine:
             Home covers if: result > spread (home won by more than spread)
             Away covers if: result < spread (home won by less than spread, or lost)
         
+        Trending filter: skips bets on teams whose rating has declined
+        by more than the trend_threshold over the lookback window.
+        
         Returns:
             DataFrame with columns: game_id, home_team, away_team, model_spread,
             market_spread, edge, bet_side, actual_result, ats_won
@@ -315,12 +344,24 @@ class NFLPowerRatingEngine:
         ratings_week = max(1, week - 1)
         self.compute_ratings(season, ratings_week)
         
+        # Also compute ratings from lookback weeks ago for trending filter
+        trend_lookback = self.config.get('trend_lookback_weeks', 4)
+        trend_threshold = self.config.get('trend_decline_threshold', -0.5)
+        use_trend_filter = self.config.get('use_trend_filter', False)
+        
+        earlier_week = max(1, ratings_week - trend_lookback)
+        if use_trend_filter and earlier_week >= 1:
+            self.compute_ratings(season, earlier_week)
+        
         df = self.games_df
         week_games = df[(df['season'] == season) & (df['week'] == week)]
         
         edges = []
         for _, game in week_games.iterrows():
-            predicted = self.predict_spread(game['home_team'], game['away_team'], season, ratings_week)
+            predicted = self.predict_spread(
+                game['home_team'], game['away_team'], season, ratings_week,
+                qb_adjuster=qb_adjuster
+            )
             market = game['spread_line']
             
             if predicted is None or pd.isna(market):
@@ -337,6 +378,15 @@ class NFLPowerRatingEngine:
                     bet_side = game['home_team']
                 else:
                     bet_side = game['away_team']
+                
+                # Trending filter: skip if the team we'd bet on is declining
+                if use_trend_filter and earlier_week in self.power_ratings.get(season, {}):
+                    current_rating = self.power_ratings[season][ratings_week].get(bet_side, 0)
+                    earlier_rating = self.power_ratings[season][earlier_week].get(bet_side, 0)
+                    trend = current_rating - earlier_rating
+                    
+                    if trend < trend_threshold:
+                        continue  # Skip this bet — team is trending down
                 
                 # ATS result: did the bet win?
                 # Home covers when: result > spread (won by more than expected)
@@ -367,13 +417,14 @@ class NFLPowerRatingEngine:
         
         return pd.DataFrame(edges)
     
-    def backtest(self, season, max_week=18):
+    def backtest(self, season, max_week=18, qb_adjuster=None):
         """
         Run a full-season backtest and return all flagged edges with ATS results.
         
         Args:
             season: NFL season year
             max_week: Last week to include (default 18 = regular season only)
+            qb_adjuster: Optional QBAdjuster instance
         
         Returns:
             DataFrame with all bets and outcomes for the season
@@ -383,7 +434,7 @@ class NFLPowerRatingEngine:
         end_week = min(max_week, data_max_week)
         
         for week in range(2, end_week + 1):
-            week_edges = self.find_edges(season, week)
+            week_edges = self.find_edges(season, week, qb_adjuster=qb_adjuster)
             if len(week_edges) > 0:
                 all_edges.append(week_edges)
         

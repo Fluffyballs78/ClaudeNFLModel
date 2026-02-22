@@ -62,7 +62,21 @@ CONFIG = {
     # -------------------------------------------------------------------------
     # Minimum difference (in points) between model spread and market spread
     # to flag as a betting opportunity. Higher = fewer but stronger signals.
-    "min_edge_threshold": 5.0,
+    "min_edge_threshold": 8.0,
+
+    # -------------------------------------------------------------------------
+    # TRENDING FILTER
+    # -------------------------------------------------------------------------
+    # Skip bets on teams whose rating is declining. This filters out bets
+    # where the model is chasing a team that's getting worse.
+    #
+    # use_trend_filter: Enable/disable the filter
+    # trend_lookback_weeks: How many weeks back to measure the trend
+    # trend_decline_threshold: Skip if rating dropped more than this
+    #   -0.5 means skip if the team's rating fell by 0.5+ pts over the lookback
+    "use_trend_filter": True,
+    "trend_lookback_weeks": 4,
+    "trend_decline_threshold": -0.5,
 
     # -------------------------------------------------------------------------
     # SEASONS
