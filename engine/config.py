@@ -79,6 +79,13 @@ CONFIG = {
     "trend_decline_threshold": -0.5,
 
     # -------------------------------------------------------------------------
+    # BETTING WINDOW
+    # -------------------------------------------------------------------------
+    # Last week to place bets. Week 18 games are often meaningless
+    # (resting starters, locked seeds, tanking). Cap at 17.
+    "max_betting_week": 17,
+
+    # -------------------------------------------------------------------------
     # SEASONS
     # -------------------------------------------------------------------------
     # Which seasons to load. More history = better opponent adjustments

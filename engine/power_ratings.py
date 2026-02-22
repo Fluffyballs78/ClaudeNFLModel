@@ -417,18 +417,21 @@ class NFLPowerRatingEngine:
         
         return pd.DataFrame(edges)
     
-    def backtest(self, season, max_week=18, qb_adjuster=None):
+    def backtest(self, season, max_week=None, qb_adjuster=None):
         """
         Run a full-season backtest and return all flagged edges with ATS results.
         
         Args:
             season: NFL season year
-            max_week: Last week to include (default 18 = regular season only)
+            max_week: Last week to include (default from config max_betting_week)
             qb_adjuster: Optional QBAdjuster instance
         
         Returns:
             DataFrame with all bets and outcomes for the season
         """
+        if max_week is None:
+            max_week = self.config.get('max_betting_week', 18)
+        
         all_edges = []
         data_max_week = self.games_df[self.games_df['season'] == season]['week'].max()
         end_week = min(max_week, data_max_week)
